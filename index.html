@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>タスク管理アプリ</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 30px auto; padding: 0 20px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input, textarea { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { padding: 10px 15px; background: #007bff; color: white; border: none; cursor: pointer; }
+    button:disabled { background: #ccc; }
+    
+    /* エラー・ローディングの表示スタイル */
+    .error { color: red; background: #ffe6e6; padding: 10px; border-radius: 4px; margin-bottom: 15px; display: none; }
+    .loading { color: #555; font-style: italic; display: none; margin-bottom: 15px; }
+    
+    /* タスク一覧のスタイル */
+    .task-card { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
+    .task-status { display: inline-block; padding: 2px 6px; background: #eee; font-size: 0.8em; }
+  </style>
+</head>
+<body>
+
+  <h1>📝 タスク管理</h1>
+
+  <!-- エラー表示エリア（入力・接続エラー） -->
+  <div id="errorMessage" class="error"></div>
+
+  <!-- 登録フォーム -->
+  <h2>新規タスク登録</h2>
+  <form id="taskForm">
+    <div class="form-group">
+      <label>タイトル（必須）</label>
+      <input type="text" id="titleInput" placeholder="例: 買い物に行く">
+    </div>
+    <div class="form-group">
+      <label>詳細</label>
+      <textarea id="descInput" placeholder="例: 牛乳とパンを買う"></textarea>
+    </div>
+    <button type="submit" id="submitBtn">タスクを追加</button>
+  </form>
+
+  <hr style="margin: 30px 0;">
+
+  <!-- 一覧表示エリア -->
+  <h2>タスク一覧</h2>
+  
+  <!-- ローディング表示（データ取得中） -->
+  <div id="loadingMessage" class="loading">⏳ データを読み込み中...</div>
+  
+  <div id="taskList"></div>
+
+  <script>
+    const API_URL = '/tasks'; // FastAPIのURL
+
+    // エラーを表示する関数
+    function showError(msg) {
+      const errEl = document.getElementById('errorMessage');
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+
+    // エラーを消す関数
+    function clearError() {
+      const errEl = document.getElementById('errorMessage');
+      errEl.style.display = 'none';
+    }
+
+    // 1. タスク一覧を取得して表示する機能
+    async function loadTasks() {
+      clearError();
+      const loadingEl = document.getElementById('loadingMessage');
+      loadingEl.style.display = 'block'; // データ取得中の表示
+
+      try {
+        const response = await fetch(API_URL);
+        if (!response.ok) throw new Error('APIからのデータ取得に失敗しました');
+        
+        const tasks = await response.json();
+        const listEl = document.getElementById('taskList');
+        listEl.innerHTML = '';
+
+        if (tasks.length === 0) {
+          listEl.innerHTML = '<p>タスクはまだありません。</p>';
+        } else {
+          tasks.forEach(task => {
+            const card = document.createElement('div');
+            card.className = 'task-card';
+            card.innerHTML = `
+              <strong>${task.title}</strong> 
+              <span class="task-status">${task.status}</span>
+              <p>${task.description || '詳細なし'}</p>
+            `;
+            listEl.appendChild(card);
+          });
+        }
+      } catch (err) {
+        // API接続エラーの表示
+        showError('⚠️ サーバーに接続できませんでした。FastAPIが起動しているか確認してください。');
+      } finally {
+        loadingEl.style.display = 'none'; // 読み込み完了したら消す
+      }
+    }
+
+    // 2. 画面からタスクを登録する機能
+    document.getElementById('taskForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearError();
+
+      const title = document.getElementById('titleInput').value.trim();
+      const description = document.getElementById('descInput').value.trim();
+
+      // バリデーション（入力チェック）
+      if (!title) {
+        showError('❌ タイトルを入力してください。');
+        return;
+      }
+
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true; // 二重送信防止
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description })
+        });
+
+        if (!response.ok) throw new Error('登録に失敗しました');
+
+        // フォームを清掃して一覧を再読み込み（DBのデータを画面に反映）
+        document.getElementById('titleInput').value = '';
+        document.getElementById('descInput').value = '';
+        await loadTasks();
+
+      } catch (err) {
+        showError('⚠️ タスクの登録に失敗しました。');
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    // 画面が開いたときに自動でタスク一覧を取得
+    loadTasks();
+  </script>
+</body>
+</html>
